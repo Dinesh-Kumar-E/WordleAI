@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+
+#body{
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: rgb(255, 255, 255);
+        align-items: center;
+        align-content: center;
+        justify-content: center;
+        display: flex;
+}
+
+.no-surrounding {
+    padding: 0;
+    margin: 0;
+}
+
+.main{
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        height: 100vh;
+        width: 500px;
+}
+
+#row1{
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+
+}
+
+#row2{
+        display: flex;
+        justify-content: flex-end;
+        align-items: end;
+
+}
+
+.box {
+        width: 60px;
+        height: 60px;
+        background-color: rgb(120, 117, 117);
+        margin: 6px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+}
+
+.Wordle-font {
+        font-family: "Inter", serif;
+        font-optical-sizing: auto;
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: white;
+}
+

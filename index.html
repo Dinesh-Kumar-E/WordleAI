@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wordle Solver</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        .word-button {
+            width: 40px;
+            height: 40px;
+            margin: 2px;
+            font-weight: bold;
+        }
+        
+        .grey {
+            background-color: #787c7e;
+            color: white;
+        }
+        
+        .yellow {
+            background-color: #c9b458;
+            color: white;
+        }
+        
+        .green {
+            background-color: #6aaa64;
+            color: white;
+        }
+        
+        .feedback-letter {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            line-height: 40px;
+            text-align: center;
+            margin: 2px;
+            border: 2px solid #ccc;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="card shadow">
+            <div class="card-header">
+                <h2 class="card-title mb-0">Wordle Solver</h2>
+            </div>
+            <div class="card-body">
+                <div id="setup-section">
+                    <div class="mb-4">
+                        <label for="wordLength" class="form-label">Word Length: <span id="wordLengthValue">5</span></label>
+                        <input type="range" class="form-range" id="wordLength" min="4" max="8" value="5">
+                    </div>
+                    <button id="startGame" class="btn btn-primary">Start Game</button>
+                </div>
+
+                <div id="game-section" class="d-none">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <h4>Remaining Words: <span id="remainingWords">0</span></h4>
+                            </div>
+                            <div class="mb-3">
+                                <h5>Current Suggestion: <span id="currentGuess" class="fw-bold"></span></h5>
+                            </div>
+                            <div id="feedbackArea" class="mb-3">
+                            </div>
+                            <div class="mb-3">
+                                <button id="submitFeedback" class="btn btn-success me-2">Submit Feedback</button>
+                                <button id="nextSuggestion" class="btn btn-outline-primary">Get Next Suggestion</button>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <canvas id="probabilityChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="alert" class="alert d-none mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let sessionId = Math.random().toString(36).substring(7);
+        let currentWordLength = 5;
+        let chart = null;
+
+        // Initialize event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            const wordLengthSlider = document.getElementById('wordLength');
+            const wordLengthValue = document.getElementById('wordLengthValue');
+            const startGameBtn = document.getElementById('startGame');
+            const submitFeedbackBtn = document.getElementById('submitFeedback');
+            const nextSuggestionBtn = document.getElementById('nextSuggestion');
+
+            wordLengthSlider.addEventListener('input', (e) => {
+                currentWordLength = parseInt(e.target.value);
+                wordLengthValue.textContent = currentWordLength;
+            });
+
+            startGameBtn.addEventListener('click', initializeSolver);
+            submitFeedbackBtn.addEventListener('click', submitFeedback);
+            nextSuggestionBtn.addEventListener('click', getSuggestion);
+        });
+
+        function showAlert(message, type = 'danger') {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert alert-${type}`;
+            alert.classList.remove('d-none');
+        }
+
+        function createFeedbackArea(word) {
+            const feedbackArea = document.getElementById('feedbackArea');
+            feedbackArea.innerHTML = '';
+            
+            for (let i = 0; i < word.length; i++) {
+                const letter = document.createElement('div');
+                letter.className = 'feedback-letter';
+                letter.textContent = word[i].toUpperCase();
+                letter.dataset.state = 'grey';
+                letter.onclick = () => toggleLetterState(letter);
+                feedbackArea.appendChild(letter);
+            }
+        }
+
+        function toggleLetterState(letter) {
+            const states = ['grey', 'yellow', 'green'];
+            let currentIndex = states.indexOf(letter.dataset.state);
+            let nextIndex = (currentIndex + 1) % states.length;
+            letter.dataset.state = states[nextIndex];
+            letter.className = `feedback-letter ${states[nextIndex]}`;
+        }
+
+        function getFeedbackString() {
+            const letters = document.querySelectorAll('.feedback-letter');
+            return Array.from(letters).map(l => l.dataset.state).join(',');
+        }
+
+        function updateChart(probabilities) {
+            const ctx = document.getElementById('probabilityChart');
+            
+            if (chart) {
+                chart.destroy();
+            }
+
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: probabilities.map(p => p.word),
+                    datasets: [{
+                        label: 'Word Probability',
+                        data: probabilities.map(p => p.probability),
+                        backgroundColor: '#4f46e5'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        async function initializeSolver() {
+            try {
+                const response = await fetch('http://localhost:8000/initialize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        session_id: sessionId, 
+                        word_length: currentWordLength 
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('setup-section').classList.add('d-none');
+                    document.getElementById('game-section').classList.remove('d-none');
+                    document.getElementById('remainingWords').textContent = data.total_words;
+                    updateChart(data.probabilities);
+                    getSuggestion();
+                } else {
+                    showAlert(data.detail);
+                }
+            } catch (err) {
+                showAlert('Failed to initialize solver');
+            }
+        }
+
+        async function getSuggestion() {
+            try {
+                const response = await fetch('http://localhost:8000/get_suggestion', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        session_id: sessionId, 
+                        word_length: currentWordLength 
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('currentGuess').textContent = data.suggestion;
+                    document.getElementById('remainingWords').textContent = data.remaining_words;
+                    createFeedbackArea(data.suggestion);
+                    updateChart(data.probabilities);
+                } else {
+                    showAlert(data.detail);
+                }
+            } catch (err) {
+                showAlert('Failed to get suggestion');
+            }
+        }
+
+        async function submitFeedback() {
+            try {
+                const currentGuess = document.getElementById('currentGuess').textContent;
+                const feedback = getFeedbackString();
+                
+                const response = await fetch('http://localhost:8000/submit_feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        guess: currentGuess,
+                        feedback: feedback.split(',')
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('remainingWords').textContent = data.remaining_words;
+                    updateChart(data.probabilities);
+                    getSuggestion();
+                } else {
+                    showAlert(data.detail);
+                }
+            } catch (err) {
+                showAlert('Failed to submit feedback');
+            }
+        }
+    </script>
+</body>
+</html>
